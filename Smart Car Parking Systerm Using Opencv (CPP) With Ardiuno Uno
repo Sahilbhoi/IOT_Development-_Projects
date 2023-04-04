@@ -1,0 +1,79 @@
+#include <Servo.h>
+#include <opencv2/opencv.hpp>
+
+using namespace cv;
+
+int trigPin = 10;
+int echoPin = 9;
+long duration, distance;
+Servo myservo;
+int servoPin = 7;
+
+int main()
+{
+    VideoCapture cap(0);
+    if (!cap.isOpened()) {
+        std::cerr << "Unable to open camera" << std::endl;
+        return -1;
+    }
+
+    namedWindow("Camera Stream", WINDOW_NORMAL);
+    resizeWindow("Camera Stream", 640, 480);
+
+    Mat frame, hsv, mask;
+    int lowH = 0, highH = 179, lowS = 0, highS = 255, lowV = 0, highV = 255;
+
+    // Initialize Arduino
+    Serial.begin(9600);
+    myservo.attach(servoPin);
+    pinMode(trigPin, OUTPUT);
+    pinMode(echoPin, INPUT);
+
+    while (true) {
+        cap >> frame;
+
+        if (frame.empty()) {
+            std::cerr << "No frame captured from camera" << std::endl;
+            break;
+        }
+
+        // Convert frame to HSV
+        cvtColor(frame, hsv, COLOR_BGR2HSV);
+
+        // Threshold frame based on color range of cars
+        inRange(hsv, Scalar(lowH, lowS, lowV), Scalar(highH, highS, highV), mask);
+
+        // Find contours in the thresholded frame
+        std::vector<std::vector<Point>> contours;
+        findContours(mask, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+        // Check if there is at least one contour detected
+        if (!contours.empty()) {
+            digitalWrite(trigPin, LOW);
+            delayMicroseconds(2);
+            digitalWrite(trigPin, HIGH);
+            delayMicroseconds(10);
+            digitalWrite(trigPin, LOW);
+            duration = pulseIn(echoPin, HIGH);
+            distance = duration * 0.034 / 2;
+            Serial.print("Distance: ");
+            Serial.println(distance);
+            if (distance < 10) {
+                myservo.write(90);
+                delay(2000);
+                myservo.write(0);
+            }
+        }
+
+        imshow("Camera Stream", frame);
+
+        if (waitKey(30) == 27) {
+            break;
+        }
+    }
+
+    cap.release();
+    destroyAllWindows();
+
+    return 0;
+}
